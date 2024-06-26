@@ -1,69 +1,104 @@
+
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from sklearn.utils import class_weight, resample
 
-# Reescalada de datos
+# Verifica si estás usando GPU
+print("Num GPUs encontradas: ", len(tf.config.list_physical_devices('GPU')))
+if tf.test.gpu_device_name():
+    print(f"GPU: {tf.test.gpu_device_name()}")
+else:
+    print("GPU no encontrada.")
+
+# Configuración de generadores de datos
 train_datagen = ImageDataGenerator(
     rescale=1./255,
     shear_range=0.2,
     zoom_range=0.2,
-    horizontal_flip=True)
+    horizontal_flip=True
+)
 
 val_test_datagen = ImageDataGenerator(rescale=1./255)
 
-# Generamos los datos de entrenamiento
+# Directorios de datos
+train_dir = 'TFM/data_cvd/train'
+val_dir = 'TFM/data_cvd/val'
+test_dir = 'TFM/data_cvd/test'
+
+# Generadores de datos
 train_generator = train_datagen.flow_from_directory(
-    'TFM/data_/train',
+    train_dir,
     target_size=(150, 150),
-    batch_size=32,
-    class_mode='binary')
+    batch_size=64,  # Ajusta según tu hardware
+    class_mode='binary'
+)
 
-# Generamos los datos de validación
 validation_generator = val_test_datagen.flow_from_directory(
-    'TFM/data_/val',
+    val_dir,
     target_size=(150, 150),
-    batch_size=32,
-    class_mode='binary')
+    batch_size=64,  # Ajusta según tu hardware
+    class_mode='binary'
+)
 
-# Generamos los  datos de prueba
 test_generator = val_test_datagen.flow_from_directory(
-    'TFM/data_/test',
+    test_dir,
     target_size=(150, 150),
-    batch_size=32,
-    class_mode='binary')
+    batch_size=64,  # Ajusta según tu hardware
+    class_mode='binary'
+)
 
+# Ajuste del peso de las clases basado en la proporción del dataset
+class_weights = class_weight.compute_class_weight(
+    class_weight='balanced',
+    classes=np.unique(train_generator.classes),
+    y=train_generator.classes
+)
+class_weights = {i: class_weights[i] for i in range(len(class_weights))}
 
-
+# Definición del modelo
 model = Sequential([
-    Conv2D(32, (3, 3), activation='relu', input_shape=(150, 150, 3)),
+    Input(shape=(150, 150, 3)),
+    Conv2D(32, (3, 3), activation='relu'),
     MaxPooling2D(pool_size=(2, 2)),
-    
+
     Conv2D(64, (3, 3), activation='relu'),
     MaxPooling2D(pool_size=(2, 2)),
-    
+
     Conv2D(128, (3, 3), activation='relu'),
     MaxPooling2D(pool_size=(2, 2)),
-    
+
     Flatten(),
-    
+
     Dense(512, activation='relu'),
     Dropout(0.5),
     Dense(1, activation='sigmoid')
 ])
 
-
+# Compilación del modelo
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
+# Callbacks
+early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+model_checkpoint = ModelCheckpoint('best_model.keras', monitor='val_loss', save_best_only=True)
+
+
+# Entrenamiento del modelo
 history = model.fit(
     train_generator,
     steps_per_epoch=train_generator.samples // train_generator.batch_size,
     epochs=10,
     validation_data=validation_generator,
-    validation_steps=validation_generator.samples // validation_generator.batch_size
+    validation_steps=validation_generator.samples // validation_generator.batch_size,
+    class_weight=class_weights,  # Se aplica el ajuste de peso de clases
+    callbacks=[early_stopping, model_checkpoint]
 )
-# Función para graficar las curvas de pérdida y precisión
+
+# Función para graficar el historial del entrenamiento
 def graficar_historial(history):
     # Curvas de pérdida
     plt.figure(figsize=(12, 4))
@@ -89,40 +124,38 @@ def graficar_historial(history):
 # Graficar el historial del entrenamiento
 graficar_historial(history)
 
-
+# Evaluar el modelo en el conjunto de prueba
 loss, accuracy = model.evaluate(test_generator, steps=test_generator.samples // test_generator.batch_size)
 print(f'Test accuracy: {accuracy*100:.2f}%')
 
-
 # Función para graficar la imagen con la predicción
 def graficar_imagen(i, arr_predicciones, imagenes):
-    prediccion = arr_predicciones[i][0]  # Asegurarse de tomar el primer valor si es un array
+    prediccion = arr_predicciones[i][0]
     img = imagenes[i]
     plt.grid(False)
     plt.xticks([])
     plt.yticks([])
 
     plt.imshow(img)
-    
-'''  porcentaje_pneumonia = prediccion * 100
+
+    porcentaje_covid = prediccion * 100
     porcentaje_normal = (1 - prediccion) * 100
 
-    plt.xlabel(f"Pneumonia: {porcentaje_pneumonia:.2f}%\nNormal: {porcentaje_normal:.2f}%")'''
+    plt.xlabel(f"COVID: {porcentaje_covid:.2f}%\nNormal: {porcentaje_normal:.2f}%")
 
 # Función para graficar el valor del arreglo de predicciones
 def graficar_valor_arreglo(i, arr_predicciones):
-    prediccion = arr_predicciones[i][0]  # Asegurarse de tomar el primer valor si es un array
+    prediccion = arr_predicciones[i][0]
     plt.grid(False)
     plt.xticks([])
     plt.yticks([])
     grafica = plt.bar([0, 1], [1 - prediccion, prediccion], color=["red", "blue"])
     plt.ylim([0, 1])
 
-    # Etiquetas para las barras
-    plt.xticks([0, 1], ['Normal', 'Pneumonia'])
+    plt.xticks([0, 1], ['Normal', 'COVID'])
     for bar, percentage in zip(grafica, [1 - prediccion, prediccion]):
         yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width()/2, yval, f'{percentage*100:.2f}%', va='bottom') 
+        plt.text(bar.get_x() + bar.get_width()/2, yval, f'{percentage*100:.2f}%', va='bottom')
 
 # Obtener un lote de datos de prueba
 imagenes_prueba, _ = next(test_generator)
