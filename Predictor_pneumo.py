@@ -7,6 +7,7 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense,
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from sklearn.utils import class_weight, resample
+from sklearn.metrics import precision_score, recall_score, roc_auc_score, roc_curve
 
 # Verifica si estás usando GPU
 print("Num GPUs encontradas: ", len(tf.config.list_physical_devices('GPU')))
@@ -26,29 +27,29 @@ train_datagen = ImageDataGenerator(
 val_test_datagen = ImageDataGenerator(rescale=1./255)
 
 # Directorios de datos
-train_dir = 'TFM/data_cvd/train'
-val_dir = 'TFM/data_cvd/val'
-test_dir = 'TFM/data_cvd/test'
+train_dir = 'data_/train'
+val_dir = 'data_/val'
+test_dir = 'data_/test'
 
 # Generadores de datos
 train_generator = train_datagen.flow_from_directory(
     train_dir,
     target_size=(150, 150),
-    batch_size=64,  # Ajusta según tu hardware
+    batch_size=50,  # Ajusta según tu hardware
     class_mode='binary'
 )
 
 validation_generator = val_test_datagen.flow_from_directory(
     val_dir,
     target_size=(150, 150),
-    batch_size=64,  # Ajusta según tu hardware
+    batch_size=50,  # Ajusta según tu hardware
     class_mode='binary'
 )
 
 test_generator = val_test_datagen.flow_from_directory(
     test_dir,
     target_size=(150, 150),
-    batch_size=64,  # Ajusta según tu hardware
+    batch_size=50,  # Ajusta según tu hardware
     class_mode='binary'
 )
 
@@ -91,7 +92,7 @@ model_checkpoint = ModelCheckpoint('best_model.keras', monitor='val_loss', save_
 history = model.fit(
     train_generator,
     steps_per_epoch=train_generator.samples // train_generator.batch_size,
-    epochs=10,
+    epochs=25,
     validation_data=validation_generator,
     validation_steps=validation_generator.samples // validation_generator.batch_size,
     class_weight=class_weights,  # Se aplica el ajuste de peso de clases
@@ -124,6 +125,33 @@ def graficar_historial(history):
 # Graficar el historial del entrenamiento
 graficar_historial(history)
 
+test_loss, test_accuracy = model.evaluate(test_generator, steps=test_generator.samples // test_generator.batch_size)
+print(f'Test accuracy: {test_accuracy*100:.2f}%')
+
+# Evaluación del modelo
+# Función para calcular y mostrar las métricas de evaluación adicionales
+def evaluar_modelo(generator, model):
+    # Obtener las etiquetas verdaderas y las predicciones del modelo
+    etiquetas = generator.classes
+    predicciones = model.predict(generator)
+    predicciones_binarias = (predicciones > 0.5).astype(int).flatten()
+
+    # Calcular precisión, sensibilidad, especificidad y AUC-ROC
+    precision = precision_score(etiquetas, predicciones_binarias)
+    sensibilidad = recall_score(etiquetas, predicciones_binarias)
+    fpr, tpr, _ = roc_curve(etiquetas, predicciones)
+    auc_roc = roc_auc_score(etiquetas, predicciones)
+    especificidad = (1 - fpr[1])  # Specificity calculation
+    # Imprimir las métricas
+    print(f'Precisión: {precision*100:.2f}%')
+    print(f'Sensibilidad: {sensibilidad*100:.2f}%')
+    print(f'Especificidad: {especificidad*100:.2f}%')
+    print(f'AUC-ROC: {auc_roc:.2f}')
+
+   
+# Evaluar el modelo
+evaluar_modelo(test_generator, model)
+
 # Evaluar el modelo en el conjunto de prueba
 loss, accuracy = model.evaluate(test_generator, steps=test_generator.samples // test_generator.batch_size)
 print(f'Test accuracy: {accuracy*100:.2f}%')
@@ -149,7 +177,7 @@ def graficar_valor_arreglo(i, arr_predicciones):
     plt.grid(False)
     plt.xticks([])
     plt.yticks([])
-    grafica = plt.bar([0, 1], [1 - prediccion, prediccion], color=["red", "blue"])
+    grafica = plt.bar([0, 1], [1 - prediccion, prediccion], color=["blue", "red"])
     plt.ylim([0, 1])
 
     plt.xticks([0, 1], ['Normal', 'COVID'])
