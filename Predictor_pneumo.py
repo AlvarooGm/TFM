@@ -166,10 +166,10 @@ def graficar_imagen(i, arr_predicciones, imagenes):
 
     plt.imshow(img)
 
-    porcentaje_covid = prediccion * 100
+    porcentaje_neumo = prediccion * 100
     porcentaje_normal = (1 - prediccion) * 100
 
-    plt.xlabel(f"COVID: {porcentaje_covid:.2f}%\nNormal: {porcentaje_normal:.2f}%")
+    plt.xlabel(f"Neumonia: {porcentaje_neumo:.2f}%\nNormal: {porcentaje_normal:.2f}%")
 
 # Función para graficar el valor del arreglo de predicciones
 def graficar_valor_arreglo(i, arr_predicciones):
@@ -180,7 +180,7 @@ def graficar_valor_arreglo(i, arr_predicciones):
     grafica = plt.bar([0, 1], [1 - prediccion, prediccion], color=["blue", "red"])
     plt.ylim([0, 1])
 
-    plt.xticks([0, 1], ['Normal', 'COVID'])
+    plt.xticks([0, 1], ['Normal', 'Neumonia'])
     for bar, percentage in zip(grafica, [1 - prediccion, prediccion]):
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2, yval, f'{percentage*100:.2f}%', va='bottom')
